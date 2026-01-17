@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html lang="ko">
   <script>
-    document.body.addEventListener('htmx:beforeRequest', (e) => {
+    document.addEventListener('htmx:beforeRequest', (e) => {
       console.log('[HTMX beforeRequest]', e.detail.elt, e.detail.pathInfo);
     });
-    document.body.addEventListener('htmx:afterRequest', (e) => {
+    document.addEventListener('htmx:afterRequest', (e) => {
       console.log('[HTMX afterRequest]', e.detail.xhr.status, e.detail.pathInfo);
     });
-    document.body.addEventListener('htmx:responseError', (e) => {
+    document.addEventListener('htmx:responseError', (e) => {
       console.log('[HTMX responseError]', e.detail.xhr.status, e.detail.xhr.responseText);
     });
-    document.body.addEventListener('htmx:sendError', (e) => {
+    document.addEventListener('htmx:sendError', (e) => {
       console.log('[HTMX sendError]', e);
     });
   </script>
@@ -22,7 +22,6 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     
     <style>
-        /* 간단한 페이드인 애니메이션 */
         .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>

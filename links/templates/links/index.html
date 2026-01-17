@@ -3,10 +3,8 @@
 
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
 
-  <!-- ================= 왼쪽 영역 ================= -->
   <div class="md:col-span-2 space-y-4">
 
-    <!-- 🔹 뉴스 추가 (컴팩트) -->
     <div class="bg-white p-4 rounded-lg shadow-md">
       <h2 class="text-lg font-bold mb-3 text-gray-800">📰 새로운 뉴스 추가</h2>
 
@@ -14,6 +12,7 @@
         hx-post="{% url 'htmx_link_create' %}"
         hx-trigger="submit"
         hx-target="#link-list"
+        hx-select="#link-list"
         hx-swap="outerHTML"
         id="link-form"
         class="flex gap-2"
@@ -39,20 +38,15 @@
       </p>
     </div>
 
-    <!-- ⚡ 빠른 액션 패널 -->
     <div class="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-100">
       <h3 class="text-sm font-bold text-indigo-700 mb-3">⚡ 빠른 추천</h3>
 
       <div class="flex flex-wrap gap-2">
-        <!-- 관심사 기반 추천 -->
+        
         <form hx-post="{% url 'htmx_recommend_interest' %}"
               hx-target="#link-list"
-              hx-swap="outerHTML"
-              hx-on::after-request="
-              document.getElementById('recommend-indicator').classList.remove('hidden');
-              setTimeout(() => document.getElementById('recommend-indicator').classList.add('hidden'), 5000);
-              setTimeout(() => htmx.ajax('GET','/',{target:'#link-list',select:'#link-list',swap:'outerHTML'}), 5000);
-            ">
+              hx-select="#link-list"
+              hx-swap="outerHTML">
           {% csrf_token %}
           <button type="submit"
                   class="bg-purple-600 text-white px-4 py-2 rounded-md text-sm hover:bg-purple-700 transition">
@@ -61,13 +55,9 @@
         </form>
 
         <form hx-post="{% url 'htmx_recommend_explore' %}"
-                hx-target="#link-list"
-                hx-swap="outerHTML"
-                hx-on::after-request="
-                document.getElementById('recommend-indicator').classList.remove('hidden');
-                setTimeout(() => document.getElementById('recommend-indicator').classList.add('hidden'), 5000);
-                setTimeout(() => htmx.ajax('GET','/',{target:'#link-list',select:'#link-list',swap:'outerHTML'}), 5000);
-              ">
+              hx-target="#link-list"
+              hx-select="#link-list"
+              hx-swap="outerHTML">
             {% csrf_token %}
             <button type="submit"
                     class="bg-emerald-600 text-white px-4 py-2 rounded-md text-sm hover:bg-emerald-700 transition">
@@ -75,27 +65,14 @@
             </button>
           </form>
       </div>
-
-      <div id="recommend-indicator" class="hidden mt-3 text-xs text-gray-600">
-        추천할 기사를 가져오는 중입니다… 잠시만 기다려주세요.
-      </div>
-    
+      
       <p class="text-xs text-gray-500 mt-2">
-        하루에 4번, 6시간마다 1번 씩 자동으로 기사가 추천됩니다.
+        * 버튼을 누르면 목록 상단에 진행 상황이 표시됩니다.
       </p>
     </div>
-    
-    <style>
-      /* 폼이 요청 중이면(HTMX가 htmx-request 부여) 버튼을 로딩 상태로 */
-      form.htmx-request .recommend-btn { opacity: .7; pointer-events: none; }
-      form.htmx-request .recommend-btn .label { content: ""; }
-      form.htmx-request .recommend-btn .spinner { display: inline-block !important; }
-      form.htmx-request .recommend-btn .label::after { content: " 처리 중…"; }
-    </style>
 
   </div>
 
-  <!-- ================= 오른쪽 영역 ================= -->
   <div class="bg-white p-5 rounded-lg shadow-md flex flex-col items-center justify-between">
     <h2 class="text-lg font-bold mb-2 text-gray-700">📊 나의 관심사 TOP 5</h2>
 
@@ -111,20 +88,21 @@
 
 </div>
 
-<!-- ================= 뉴스 리스트 ================= -->
 {% include 'links/partials/link_list.html' %}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-  // 폼 제출 후 input 비우기
-  document.body.addEventListener('htmx:afterRequest', function(evt) {
+  // [수정] document.body 대신 document를 사용하여 null 에러 방지
+  document.addEventListener('htmx:afterRequest', function(evt) {
+      // 폼 제출 성공 시 입력창 비우기
       if(evt.detail.elt.id === 'link-form' && evt.detail.successful) {
-          document.querySelector('input[name="url"]').value = '';
+          const input = document.querySelector('input[name="url"]');
+          if(input) input.value = '';
       }
   });
 
-  // 차트 렌더
+  // 차트 렌더링
   const ctx = document.getElementById('tagChart').getContext('2d');
   const labels = {{ chart_labels|safe }};
   const data = {{ chart_data|safe }};

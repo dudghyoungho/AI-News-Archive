@@ -10,6 +10,9 @@ from django.views.decorators.http import require_POST
 from django.urls import reverse_lazy
 from django.views.generic import CreateView
 from django.contrib.auth.forms import UserCreationForm
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.utils.dateparse import parse_datetime
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -149,48 +152,41 @@ class SignUpView(CreateView):
     template_name = 'registration/signup.html'
 
 
-
-def get_link_context(user):
-    stale_cutoff = timezone.now() - timedelta(minutes=10)
-    Link.objects.filter(
-        user=user,
-        status='PROCESSING',
-        updated_at__lt=stale_cutoff
-    ).update(status='FAILED', failed_reason='STALE_PROCESSING_TIMEOUT')
-
-    Link.objects.filter(
-        user=user,
-        status='PENDING',
-        updated_at__lt=stale_cutoff
-    ).update(status='FAILED', failed_reason='STALE_PENDING_TIMEOUT')
-
-    links = Link.objects.filter(
-        user=user,
-        status__in=['COMPLETED', 'RECOMMENDED', 'FAILED', 'PARTIAL']
-    ).order_by('-created_at')
+def get_link_context(request):
+    user = request.user
     
-    has_pending = Link.objects.filter(
-        user=user,
-        status__in=['PENDING', 'PROCESSING']
-    ).exists()
+    stale_cutoff = timezone.now() - timedelta(minutes=10)
+    Link.objects.filter(user=user, status='PROCESSING', updated_at__lt=stale_cutoff).update(status='FAILED', failed_reason='TIMEOUT')
+    Link.objects.filter(user=user, status='PENDING', updated_at__lt=stale_cutoff).update(status='FAILED', failed_reason='TIMEOUT')
+
+    links = Link.objects.filter(user=user).order_by('-created_at')
+
+    db_pending = Link.objects.filter(user=user, status__in=['PENDING', 'PROCESSING']).exists()
+    
+    session_pending = False
+    last_req_str = request.session.get('recommend_timestamp')
+    
+    if last_req_str:
+        try:
+            last_req_time = parse_datetime(last_req_str)
+            if last_req_time and (timezone.now() - last_req_time).total_seconds() < 10:
+                session_pending = True
+        except Exception:
+            pass 
+    has_pending = db_pending or session_pending
     
     return {
         'links': links,
         'has_pending': has_pending
     }
 
+
 @login_required
 @require_POST
 def htmx_link_create(request):
-    """
-    index.html의 폼에서 호출되는 뷰입니다.
-    데이터 저장 후 'JSON'이 아닌 '갱신된 리스트 HTML'을 반환합니다.
-    """
     url = request.POST.get('url', '').strip()
 
-    if not url or "naver.com" not in url:
-        pass 
-    else:
+    if url and "naver.com" in url:
         with transaction.atomic():
             existing = (
                 Link.objects.select_for_update()
@@ -209,37 +205,43 @@ def htmx_link_create(request):
                 )
                 crawl_and_save_link.delay(link.id)
 
-    context = get_link_context(request.user)
+    context = get_link_context(request)
     return render(request, 'links/partials/link_list.html', context)
 
 
 @login_required
 @require_POST
 def htmx_recommend_interest(request):
-    """
-    관심사 기반 추천 즉시 실행 (Celery 큐잉)
-    """
-    res = recommend_articles_for_user.delay(request.user.id)
-    logger.info(f"[HTMX] interest recommend queued user={request.user.id} task_id={res.id}")
-    context = get_link_context(request.user)
+    recommend_articles_for_user.delay(request.user.id)
+    
+    request.session['recommend_timestamp'] = str(timezone.now())
+    
+    context = get_link_context(request)
     return render(request, "links/partials/link_list.html", context)
+
 
 @login_required
 @require_POST
 def htmx_recommend_explore(request):
-    """
-    탐험 추천 즉시 실행 (Celery 큐잉)
-    """
-    res = recommend_exploratory_articles.delay(request.user.id)
-    logger.info(f"[HTMX] explore recommend queued user={request.user.id} task_id={res.id}")
-
-    context = get_link_context(request.user)
+    recommend_exploratory_articles.delay(request.user.id)
+    
+    request.session['recommend_timestamp'] = str(timezone.now())
+    
+    context = get_link_context(request)
     return render(request, "links/partials/link_list.html", context)
 
+
+# =========================================================
+# 5. Index 메인 뷰
+# =========================================================
 @login_required
 def index(request):
-    context = get_link_context(request.user)
+    # 수정됨: user 대신 request를 넘김
+    context = get_link_context(request)
+    
     links = context['links']
+    
+    # --- 차트 데이터 생성 로직 (기존 유지) ---
     all_tags = []
     for link in links:
         if link.status == 'COMPLETED' and link.tags:
@@ -253,7 +255,6 @@ def index(request):
         'chart_labels': chart_labels,
         'chart_data': chart_data,
     })
-    
     if request.headers.get('HX-Request'):
         return render(request, 'links/partials/link_list.html', context)
     
