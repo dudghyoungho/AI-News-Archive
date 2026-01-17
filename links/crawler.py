@@ -364,6 +364,7 @@ def get_naver_news_info(url: str) -> Dict[str, Any]:
     content = extract_content(soup)
     result["content"] = content
 
+    min_len = 50
     if len(content) >= min_len and not result["failed_reason"]:
         result["status"] = "SUCCESS"
         return result
